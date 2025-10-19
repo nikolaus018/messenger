@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>E2E Messenger</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="brand">
+          <button id="friends-toggle" class="circle-btn" title="Friends">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span class="sr-only">Toggle friends</span>
+          </button>
+          <h1>Messenger</h1>
+        </div>
+        <div class="brand" style="gap:12px">
+          <span id="me-label" class="title"></span>
+          <button id="logout-btn" class="btn ghost small" type="button">Logout</button>
+        </div>
+      </header>
+
+      <div id="auth" class="auth">
+        <div class="auth-grid">
+          <div id="login-card" class="card">
+            <h2>Login</h2>
+            <div class="field"><input id="login-username" class="input" placeholder="Username" /></div>
+            <div class="field"><input id="login-password" class="input" type="password" placeholder="Password" /></div>
+            <div class="row" style="gap:12px;">
+              <button id="login-btn" class="btn primary" type="button" style="flex:1">Login</button>
+              <button id="goto-register" class="btn success" type="button" style="flex:1">Create Account</button>
+            </div>
+            <div id="login-error" class="error" role="alert" aria-live="polite"></div>
+            <div class="help">On a new device, import your key file or register below.</div>
+            <div class="row" style="margin-top:10px; align-items:center;">
+              <input id="import-file" type="file" accept="application/json" class="hidden" />
+              <button id="import-btn" class="btn" type="button">Import Key File</button>
+            </div>
+          </div>
+
+          <div id="register-card" class="card hidden">
+            <h2>Create Account</h2>
+            <div class="field"><input id="reg-username" class="input" placeholder="Username" /></div>
+            <div class="field"><input id="reg-password" class="input" type="password" placeholder="Password" /></div>
+            <div class="field"><button id="register-btn" class="btn success block" type="button">Create Account</button></div>
+            <div id="register-error" class="error" role="alert" aria-live="polite"></div>
+            <div class="help">Generates an RSA keypair in your browser. Your private key is password-encrypted and stays on your device.</div>
+            <div class="row" style="margin-top:10px; align-items:center;">
+              <button id="goto-login" class="btn" type="button">Back to login</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="app" class="app hidden">
+        <aside class="sidebar">
+          <div class="sidebar-inner">
+            <div class="section">
+              <h3>Friends</h3>
+              <div id="friends" class="friend-list"></div>
+            </div>
+            <div class="section">
+              <div class="row">
+                <input id="add-friend-username" class="input" placeholder="Add friend by username" />
+                <button id="add-friend-btn" class="btn">Add</button>
+              </div>
+              <div id="friend-error" class="error"></div>
+            </div>
+            <div class="section">
+              <h3>Requests</h3>
+              <div id="requests" class="friend-list"></div>
+            </div>
+            <div class="section">
+              <h3>Keys</h3>
+              <div class="row">
+                <button id="export-btn" class="btn">Export</button>
+                <button id="import-btn-app" class="btn">Import</button>
+                <input id="import-file-app" type="file" accept="application/json" class="hidden" />
+              </div>
+              <div class="help">Keep your key file safe.</div>
+            </div>
+          </div>
+        </aside>
+
+        <div id="friends-drawer" class="drawer-backdrop hidden">
+          <div class="drawer">
+            <div class="drawer-head">
+              <div class="title">Friends</div>
+              <button id="friends-close" class="circle-btn" title="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div class="drawer-body">
+              <div id="friends-m" class="friend-list"></div>
+              <div class="section">
+                <div class="row">
+                  <input id="add-friend-username-m" class="input" placeholder="Add friend" />
+                  <button id="add-friend-btn-m" class="btn">Add</button>
+                </div>
+                <div id="friend-error-m" class="error"></div>
+              </div>
+              <div class="section">
+                <h3>Requests</h3>
+                <div id="requests-m" class="friend-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <main class="main">
+          <div class="chat-header">
+            <div>
+              <div id="chat-header" class="title">Select a friend to chat</div>
+              <div id="chat-presence" class="subtle"></div>
+            </div>
+            <div>
+              <button id="open-friends" class="btn">Friends</button>
+            </div>
+          </div>
+          <div id="chat-log" class="chat-log"></div>
+          <div id="composer" class="composer hidden">
+            <div class="composer-inner">
+              <button id="attach-btn" class="attach" title="Attach">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05 12 20.5a6 6 0 0 1-8.49-8.49l9.45-9.45a4 4 0 0 1 5.66 5.66L8.5 18.5a2 2 0 0 1-2.83-2.83l9-9"/></svg>
+              </button>
+              <input id="attach-input" type="file" class="hidden" />
+              <textarea id="chat-input" rows="1" class="textarea" placeholder="Type a message"></textarea>
+              <button id="chat-send" class="send">Send</button>
+            </div>
+            <div class="composer-inner" style="margin-top:8px; align-items:center;">
+              <div id="upload-progress" class="progress">
+                <div class="bar-outer"><div id="upload-bar" class="bar-inner" style="width:0%"></div></div>
+                <div id="upload-label" class="help"></div>
+                <button id="upload-cancel" class="link">Cancel</button>
+              </div>
+              <div id="chat-error" class="error-line"></div>
+            </div>
+          </div>
+        </main>
+      </div>
+
+    </div>
+
+    <!-- Lightbox for image preview -->
+    <div id="lightbox" class="lightbox" aria-hidden="true">
+      <div class="lightbox-backdrop"></div>
+      <div class="lightbox-inner">
+        <img id="lightbox-img" alt="preview" />
+        <div class="lightbox-actions">
+          <a id="lightbox-download" class="btn ghost small" href="#" download>Download</a>
+          <button id="lightbox-close" class="btn outline danger small" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+  </html>
