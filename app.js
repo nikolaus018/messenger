@@ -145,7 +145,7 @@
         btn.appendChild(av); btn.appendChild(nm);
         btn.onclick = () => {
           state.selectedFriend = f; document.getElementById('chat-header').textContent = 'Chat with ' + f; clearChatLog(); loadingOlder = false;
-          loadingNewFor[f] = false; lastByFriend[f] = null; oldestByFriend[f] = null; seenByFriend[f] = new Set(); document.getElementById('composer').classList.remove('hidden');
+          lastByFriend[f] = lastByFriend[f] || null; oldestByFriend[f] = oldestByFriend[f] || null; seenByFriend[f] = new Set(); document.getElementById('composer').classList.remove('hidden');
           hideFriendsDrawer(); loadNewForFriend(f); bindScrollForHistory();
         };
         c.appendChild(btn);
@@ -169,43 +169,7 @@
       for (const to of (reqs.outgoing || [])) { const row = document.createElement('div'); row.className = 'subtle'; row.textContent = `Pending: ${to}`; c.appendChild(row); }
     }
   }
-  function clearChatLog() {
-    const log = document.getElementById('chat-log'); if (!log) return;
-    for (const el of bubbleById.values()) { if (el.dataset && el.dataset.objectUrl) { try { URL.revokeObjectURL(el.dataset.objectUrl); } catch {} } }
-    bubbleById.clear();
-    log.innerHTML = '';
-  }
-  function removeBubble(id) {
-    if (id == null) return;
-    const bubble = bubbleById.get(id);
-    if (!bubble) return;
-    if (bubble.dataset && bubble.dataset.objectUrl) { try { URL.revokeObjectURL(bubble.dataset.objectUrl); } catch {} }
-    if (bubble.parentElement) bubble.parentElement.removeChild(bubble);
-    bubbleById.delete(id);
-  }
-  async function requestDeleteMessage(id, button) {
-    if (id == null) return;
-    if (!window.confirm('Delete this message for everyone?')) return;
-    if (button) button.disabled = true;
-    try { await api.deleteMessage(id); removeBubble(id); const current = state.selectedFriend; if (current && seenByFriend[current]) seenByFriend[current].delete(id); }
-    catch (err) { if (button) button.disabled = false; const msg = err && err.message ? err.message : 'Delete failed'; alert(msg); }
-  }
-  function addDeleteButton(bubble, id) {
-    if (!bubble || id == null) return;
-    if (bubble.querySelector('.bubble-delete')) return;
-    const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'bubble-delete'; btn.title = 'Delete message';
-    btn.innerHTML = '<span aria-hidden="true">🗑</span><span class="sr-only">Delete</span>';
-    btn.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); requestDeleteMessage(id, btn); };
-    bubble.appendChild(btn);
-  }
-  function finalizeBubble(bubble, { id = null, mine = false, objectUrl = null } = {}) {
-    if (!bubble) return bubble;
-    if (id != null) { bubble.dataset.messageId = String(id); bubbleById.set(id, bubble); }
-    if (objectUrl) bubble.dataset.objectUrl = objectUrl;
-    if (mine && id != null) addDeleteButton(bubble, id);
-    return bubble;
-  }
-  function appendTextBubble({ id = null, text, mine, createdAt }) {
+  function appendTextBubble({ text, mine, createdAt }) {
     const log = document.getElementById('chat-log');
     const stick = (log.scrollHeight - log.scrollTop - log.clientHeight) < 80 || mine;
     const b = document.createElement('div');
@@ -217,11 +181,11 @@
     meta.textContent = new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     b.appendChild(content);
     b.appendChild(meta);
-    log.appendChild(finalizeBubble(b, { id, mine }));
+    log.appendChild(b);
     if (stick) log.scrollTop = log.scrollHeight;
   }
 
-  function appendImageBubble({ id = null, url, name, mine, createdAt }) {
+  function appendImageBubble({ url, name, mine, createdAt }) {
     const log = document.getElementById('chat-log');
     const stick = (log.scrollHeight - log.scrollTop - log.clientHeight) < 80 || mine;
     const b = document.createElement('div');
@@ -237,11 +201,11 @@
     meta.textContent = new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     b.appendChild(img);
     b.appendChild(meta);
-    log.appendChild(finalizeBubble(b, { id, mine, objectUrl: url }));
+    log.appendChild(b);
     if (stick) log.scrollTop = log.scrollHeight;
   }
 
-  function appendFileBubble({ id = null, meta, mine, createdAt }) {
+  function appendFileBubble({ meta, mine, createdAt }) {
     const log = document.getElementById('chat-log');
     const stick = (log.scrollHeight - log.scrollTop - log.clientHeight) < 80 || mine;
     const b = document.createElement('div');
@@ -258,7 +222,7 @@
     ts.textContent = new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     b.appendChild(line);
     b.appendChild(ts);
-    log.appendChild(finalizeBubble(b, { id, mine }));
+    log.appendChild(b);
     if (stick) log.scrollTop = log.scrollHeight;
   }
   function prependTextBubble({ id = null, text, mine, createdAt }) {
