@@ -223,6 +223,52 @@ class Database:
             cur.execute("SELECT id, username, public_key_jwk, created_at FROM users WHERE username = ?", (username,))
             return cur.fetchone()
 
+    def delete_message(self, message_id: int, username: str) -> Dict[str, Any]:
+        with self.lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                """
+                SELECT m.id, m.ciphertext, su.username AS sender, ru.username AS recipient
+                  FROM messages m
+                  JOIN users su ON su.id = m.sender_id
+                  JOIN users ru ON ru.id = m.recipient_id
+                 WHERE m.id = ?
+                """,
+                (message_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise KeyError("message_not_found")
+            if row["sender"] != username:
+                raise PermissionError("not_sender")
+            cur.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+            self.conn.commit()
+            return row
+
+    def delete_upload_for_message(self, upload_id: int, owner_username: str) -> None:
+        with self.lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                """
+                SELECT u.path, ou.username AS owner
+                  FROM uploads u
+                  JOIN users ou ON ou.id = u.owner_id
+                 WHERE u.id = ?
+                """,
+                (upload_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return
+            if row["owner"] != owner_username:
+                raise PermissionError("not_owner")
+            cur.execute("DELETE FROM uploads WHERE id = ?", (upload_id,))
+            self.conn.commit()
+        try:
+            os.remove(row["path"])
+        except FileNotFoundError:
+            pass
+
     def insert_message(self, sender: str, recipient: str, ciphertext: str) -> int:
         now = datetime.utcnow().isoformat()
         with self.lock:
@@ -746,6 +792,33 @@ def send_message(body: SendMessageBody, user=Depends(get_current_user)):
     # push live event
     notify_user(body.recipient, {"type": "new_message", "id": msg_id, "from": body.sender})
     return {"id": msg_id}
+
+
+@app.delete("/messages/{message_id}")
+def delete_message(message_id: int, user=Depends(get_current_user)):
+    try:
+        row = db.delete_message(message_id, user["username"])
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Message not found")
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    # Clean up any associated upload owned by the sender
+    try:
+        meta = json.loads(row["ciphertext"])
+    except (TypeError, json.JSONDecodeError):
+        meta = None
+    if isinstance(meta, dict) and meta.get("type") == "file" and meta.get("upload_id") is not None:
+        try:
+            db.delete_upload_for_message(int(meta["upload_id"]), row["sender"])
+        except PermissionError:
+            # Should not happen, but ignore if ownership doesn't match
+            pass
+
+    payload = {"type": "message_deleted", "id": message_id, "sender": row["sender"], "recipient": row["recipient"]}
+    notify_user(row["recipient"], payload)
+    notify_user(row["sender"], payload)
+    return {"ok": True}
 
 
 @app.get("/messages/inbox")
