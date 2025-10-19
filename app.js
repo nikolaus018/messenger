@@ -39,6 +39,7 @@
     async friendRequest(to) { const res = await this._fetch('/friends/request', { method: 'POST', headers: this.headers(), body: JSON.stringify({ to }) }); return res.json(); },
     async friendRespond(requester, accept) { const res = await this._fetch('/friends/respond', { method: 'POST', headers: this.headers(), body: JSON.stringify({ requester, accept }) }); return res.json(); },
     async send(sender, recipient, ciphertext) { const res = await this._fetch('/messages', { method: 'POST', headers: this.headers(), body: JSON.stringify({ sender, recipient, ciphertext }) }); return res.json(); },
+    async deleteMessage(id) { const res = await this._fetch(`/messages/${id}`, { method: 'DELETE', headers: this.headers() }); return res.json(); },
     async inbox(username, sinceId = null, limit = 200, beforeId = null) {
       const qp = new URLSearchParams({ username, limit: String(limit) });
       if (sinceId != null) qp.set('since_id', String(sinceId));
@@ -125,6 +126,7 @@
   const oldestByFriend = {};
   const loadingNewFor = {}; const seenByFriend = {};
   let latestFriends = [];
+  const bubbleById = new Map();
 
   // -----------------------------
   // UI helpers
@@ -142,7 +144,7 @@
         const nm = document.createElement('span'); nm.className = 'friend-name'; nm.textContent = f;
         btn.appendChild(av); btn.appendChild(nm);
         btn.onclick = () => {
-          state.selectedFriend = f; document.getElementById('chat-header').textContent = 'Chat with ' + f; document.getElementById('chat-log').innerHTML = '';
+          state.selectedFriend = f; document.getElementById('chat-header').textContent = 'Chat with ' + f; clearChatLog(); loadingOlder = false;
           lastByFriend[f] = lastByFriend[f] || null; oldestByFriend[f] = oldestByFriend[f] || null; seenByFriend[f] = new Set(); document.getElementById('composer').classList.remove('hidden');
           hideFriendsDrawer(); loadNewForFriend(f); bindScrollForHistory();
         };
@@ -223,25 +225,25 @@
     log.appendChild(b);
     if (stick) log.scrollTop = log.scrollHeight;
   }
-  function prependTextBubble({ text, mine, createdAt }) {
+  function prependTextBubble({ id = null, text, mine, createdAt }) {
     const log = document.getElementById('chat-log'); const first = log.firstChild; const b = document.createElement('div'); b.className = 'msg ' + (mine ? 'me' : 'you');
     const content = document.createElement('div'); content.textContent = text;
     const meta = document.createElement('div'); meta.className = 'time'; meta.textContent = new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    b.appendChild(content); b.appendChild(meta); log.insertBefore(b, first);
+    b.appendChild(content); b.appendChild(meta); log.insertBefore(finalizeBubble(b, { id, mine }), first);
   }
-  function prependImageBubble({ url, name, mine, createdAt }) {
+  function prependImageBubble({ id = null, url, name, mine, createdAt }) {
     const log = document.getElementById('chat-log'); const first = log.firstChild; const b = document.createElement('div'); b.className = 'msg ' + (mine ? 'me' : 'you');
     const img = document.createElement('img'); img.src = url; img.alt = name || 'image'; img.className = 'img'; img.style.cursor = 'zoom-in'; img.onclick = () => openLightbox(url, name || 'image');
     const meta = document.createElement('div'); meta.className = 'time'; meta.textContent = new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    b.appendChild(img); b.appendChild(meta); log.insertBefore(b, first);
+    b.appendChild(img); b.appendChild(meta); log.insertBefore(finalizeBubble(b, { id, mine, objectUrl: url }), first);
   }
-  function prependFileBubble({ meta, mine, createdAt }) {
+  function prependFileBubble({ id = null, meta, mine, createdAt }) {
     const log = document.getElementById('chat-log'); const first = log.firstChild; const b = document.createElement('div'); b.className = 'msg ' + (mine ? 'me' : 'you');
     const line = document.createElement('div'); line.textContent = `📎 ${meta.name} (${Math.round(meta.size / 1024)} KB) `;
     const btn = document.createElement('button'); btn.className = 'btn small ghost'; btn.textContent = 'Download'; btn.onclick = () => downloadAttachment(meta);
     line.appendChild(btn);
     const ts = document.createElement('div'); ts.className = 'time'; ts.textContent = new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    b.appendChild(line); b.appendChild(ts); log.insertBefore(b, first);
+    b.appendChild(line); b.appendChild(ts); log.insertBefore(finalizeBubble(b, { id, mine }), first);
   }
   // Lightbox preview
   function openLightbox(url, name) {
@@ -283,15 +285,15 @@
           const mine = meta.sender === state.username; if ((meta.sender !== friend && !mine)) continue;
           if (!seenByFriend[friend]) seenByFriend[friend] = new Set();
           if (seenByFriend[friend].has(r.id)) continue;
-          if ((meta.mime || '').startsWith('image/')) { const blob = await decryptToBlob(meta); const url = URL.createObjectURL(blob); appendImageBubble({ url, name: meta.name, mine, createdAt: r.created_at }); }
-          else { appendFileBubble({ meta, mine, createdAt: r.created_at }); }
+          if ((meta.mime || '').startsWith('image/')) { const blob = await decryptToBlob(meta); const url = URL.createObjectURL(blob); appendImageBubble({ id: r.id, url, name: meta.name, mine, createdAt: r.created_at }); }
+          else { appendFileBubble({ id: r.id, meta, mine, createdAt: r.created_at }); }
           seenByFriend[friend].add(r.id);
         } else {
           const { sender, text } = await hybridDecrypt(state.privateKey, r.ciphertext);
           if (sender !== friend && sender !== state.username) continue;
           if (!seenByFriend[friend]) seenByFriend[friend] = new Set();
           if (seenByFriend[friend].has(r.id)) continue;
-          appendTextBubble({ text, mine: sender === state.username, createdAt: r.created_at });
+          appendTextBubble({ id: r.id, text, mine: sender === state.username, createdAt: r.created_at });
           seenByFriend[friend].add(r.id);
         }
         lastByFriend[friend] = r.id; if (!oldestByFriend[friend] || r.id < oldestByFriend[friend]) oldestByFriend[friend] = r.id;
@@ -303,15 +305,38 @@
     const input = document.getElementById('chat-input'); const to = state.selectedFriend; if (!to) return; const msg = input.value.trim(); if (!msg) return;
     const user = await api.getUser(to); if (!user) { document.getElementById('chat-error').textContent = 'Recipient not found'; return; }
     const pubKey = await importPublicKey(user.public_key_jwk);
-    try { const blob = await hybridEncrypt(pubKey, msg, state.username); await api.send(state.username, to, blob); }
+    let response;
+    try { const blob = await hybridEncrypt(pubKey, msg, state.username); response = await api.send(state.username, to, blob); }
     catch (e) { document.getElementById('chat-error').textContent = e.message || 'Send failed'; setTimeout(() => document.getElementById('chat-error').textContent = '', 2000); return; }
-    input.value = ''; appendTextBubble({ text: msg, mine: true, createdAt: new Date().toISOString() });
+    input.value = '';
+    const createdAt = new Date().toISOString();
+    const id = response && typeof response.id === 'number' ? response.id : null;
+    appendTextBubble({ id, text: msg, mine: true, createdAt });
+    if (id != null) {
+      lastByFriend[to] = id;
+      if (!seenByFriend[to]) seenByFriend[to] = new Set();
+      seenByFriend[to].add(id);
+    }
   }
 
   function connectWS() {
     if (!state.token) return;
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?token=${encodeURIComponent(state.token)}`);
-    ws.onmessage = async (ev) => { try { const data = JSON.parse(ev.data); if (data.type === 'new_message') { const f = data.from; if (state.selectedFriend && f === state.selectedFriend) { await loadNewForFriend(f); } } else if (data.type === 'friend_request' || data.type === 'friend_response') { await refreshFriends(); } } catch { } };
+    ws.onmessage = async (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data.type === 'new_message') {
+          const f = data.from;
+          if (state.selectedFriend && f === state.selectedFriend) { await loadNewForFriend(f); }
+        } else if (data.type === 'message_deleted') {
+          const other = state.username === data.sender ? data.recipient : data.sender;
+          removeBubble(data.id);
+          if (other && seenByFriend[other]) { seenByFriend[other].delete(data.id); }
+        } else if (data.type === 'friend_request' || data.type === 'friend_response') {
+          await refreshFriends();
+        }
+      } catch { }
+    };
     state.ws = ws;
   }
 
@@ -332,15 +357,15 @@
               const mine = meta.sender === state.username; if ((meta.sender !== friend && !mine)) continue;
               if (!seenByFriend[friend]) seenByFriend[friend] = new Set();
               if (seenByFriend[friend].has(r.id)) continue;
-              if ((meta.mime || '').startsWith('image/')) { const blob = await decryptToBlob(meta); const url = URL.createObjectURL(blob); prependImageBubble({ url, name: meta.name, mine, createdAt: r.created_at }); }
-              else { prependFileBubble({ meta, mine, createdAt: r.created_at }); }
+              if ((meta.mime || '').startsWith('image/')) { const blob = await decryptToBlob(meta); const url = URL.createObjectURL(blob); prependImageBubble({ id: r.id, url, name: meta.name, mine, createdAt: r.created_at }); }
+              else { prependFileBubble({ id: r.id, meta, mine, createdAt: r.created_at }); }
               seenByFriend[friend].add(r.id);
             } else {
               const { sender, text } = await hybridDecrypt(state.privateKey, r.ciphertext);
               if (sender !== friend && sender !== state.username) continue;
               if (!seenByFriend[friend]) seenByFriend[friend] = new Set();
               if (seenByFriend[friend].has(r.id)) continue;
-              prependTextBubble({ text, mine: sender === state.username, createdAt: r.created_at });
+              prependTextBubble({ id: r.id, text, mine: sender === state.username, createdAt: r.created_at });
               seenByFriend[friend].add(r.id);
             }
             if (!oldestByFriend[friend] || r.id < oldestByFriend[friend]) oldestByFriend[friend] = r.id;
@@ -396,8 +421,21 @@
 
     const meta = { type: 'file', sender: state.username, name: file.name, size: file.size, mime: file.type || 'application/octet-stream', upload_id: id, key: ab2b64(wrappedKey), iv: ab2b64(baseIv.buffer), chunk: CHUNK, total: total };
     if (wrappedKeySelf) meta.key_self = ab2b64(wrappedKeySelf);
-    await api.send(state.username, to, JSON.stringify(meta));
-    const mine = true; if ((meta.mime || '').startsWith('image/')) { const blob = await decryptToBlob(meta); const url = URL.createObjectURL(blob); appendImageBubble({ url, name: meta.name, mine, createdAt: new Date().toISOString() }); } else { appendFileBubble({ meta, mine, createdAt: new Date().toISOString() }); }
+    const sendRes = await api.send(state.username, to, JSON.stringify(meta));
+    const createdAt = new Date().toISOString();
+    const messageId = sendRes && typeof sendRes.id === 'number' ? sendRes.id : null;
+    const mine = true;
+    if ((meta.mime || '').startsWith('image/')) {
+      const blob = await decryptToBlob(meta); const url = URL.createObjectURL(blob);
+      appendImageBubble({ id: messageId, url, name: meta.name, mine, createdAt });
+    } else {
+      appendFileBubble({ id: messageId, meta, mine, createdAt });
+    }
+    if (messageId != null) {
+      lastByFriend[to] = messageId;
+      if (!seenByFriend[to]) seenByFriend[to] = new Set();
+      seenByFriend[to].add(messageId);
+    }
   }
 
   async function decryptToBlob(meta) {
@@ -429,8 +467,22 @@
   }
 
   // App bindings
-  function showFriendsDrawer() { const el = document.getElementById('friends-drawer'); if (el) el.classList.remove('hidden'); }
-  function hideFriendsDrawer() { const el = document.getElementById('friends-drawer'); if (el) el.classList.add('hidden'); }
+  function showFriendsDrawer() {
+    const el = document.getElementById('friends-drawer');
+    if (!el) return;
+    if (el._hideTimer) { clearTimeout(el._hideTimer); el._hideTimer = null; }
+    el.classList.remove('hidden');
+    requestAnimationFrame(() => el.classList.add('open'));
+    document.body.classList.add('drawer-open');
+  }
+  function hideFriendsDrawer() {
+    const el = document.getElementById('friends-drawer');
+    if (!el || el.classList.contains('hidden')) { document.body.classList.remove('drawer-open'); return; }
+    el.classList.remove('open');
+    document.body.classList.remove('drawer-open');
+    if (el._hideTimer) { clearTimeout(el._hideTimer); }
+    el._hideTimer = setTimeout(() => { el.classList.add('hidden'); el._hideTimer = null; }, 220);
+  }
 
   function bindAppEvents() {
     document.getElementById('chat-send').onclick = sendChat;
@@ -445,7 +497,8 @@
     document.getElementById('friends-toggle').onclick = showFriendsDrawer;
     const openF = document.getElementById('open-friends'); if (openF) openF.onclick = showFriendsDrawer;
     const closeF = document.getElementById('friends-close'); if (closeF) closeF.onclick = hideFriendsDrawer;
-    document.getElementById('logout-btn').onclick = () => { state.token = null; api.setToken(null); state.privateKey = null; state.username = null; state.selectedFriend = null; document.getElementById('app').classList.add('hidden'); document.getElementById('auth').classList.remove('hidden'); document.getElementById('chat-log').innerHTML = ''; if (state.ws) { try { state.ws.close(); } catch { } state.ws = null; } setMeLabel(); };
+    const drawer = document.getElementById('friends-drawer'); if (drawer && !drawer._clickBound) { drawer.addEventListener('click', (e) => { if (e.target === drawer) hideFriendsDrawer(); }); drawer._clickBound = true; }
+    document.getElementById('logout-btn').onclick = () => { hideFriendsDrawer(); state.token = null; api.setToken(null); state.privateKey = null; state.username = null; state.selectedFriend = null; document.getElementById('app').classList.add('hidden'); document.getElementById('auth').classList.remove('hidden'); clearChatLog(); if (state.ws) { try { state.ws.close(); } catch { } state.ws = null; } setMeLabel(); };
     setupComposerPinning();
   }
   // Auth flows
