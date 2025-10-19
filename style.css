@@ -35,8 +35,10 @@ body { margin: 0; background: radial-gradient(1200px 800px at 10% 10%, #0a1220 0
 .link:hover { opacity: 1; text-decoration: underline; }
 
 .auth { flex: 1; overflow: auto; display: grid; place-items: center; align-content: center; justify-content: center; padding: 24px; }
-.auth-grid { display: grid; grid-template-columns: 1fr; gap: 24px; width: min(980px, 100%);  margin: 0 auto; }\r\n
-@media (min-width: 900px){ .auth-grid { grid-template-columns: 1fr 1fr;  margin: 0 auto; }\r\n }
+.auth-grid { display: grid; grid-template-columns: 1fr; gap: 24px; width: min(980px, 100%); margin: 0 auto; }
+@media (min-width: 900px) {
+  .auth-grid { grid-template-columns: 1fr 1fr; margin: 0 auto; }
+}
 .card { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.35); padding: 18px; }
 .card h2 { margin: 0 0 10px 0; font-size: 16px; font-weight: 600; }
 .field { margin-bottom: 10px; }
@@ -99,7 +101,10 @@ body { margin: 0; background: radial-gradient(1200px 800px at 10% 10%, #0a1220 0
 /* Utility for IDs used by JS rendering */
 #friends .friend, #friends-m .friend { border: 1px solid var(--border); background: #0b1324; }
 
-\r\n.btn[disabled] { opacity: 0.6; cursor: not-allowed; filter: grayscale(0.2); }\r\n.btn[disabled]:hover { background: var(--panel-2); }\r\n.input[disabled] { opacity: 0.7; cursor: not-allowed; }\r\n.error { font-size: 12px; color: var(--danger); min-height: 18px; margin-top: 6px; }
+.btn[disabled] { opacity: 0.6; cursor: not-allowed; filter: grayscale(0.2); }
+.btn[disabled]:hover { background: var(--panel-2); }
+.input[disabled] { opacity: 0.7; cursor: not-allowed; }
+.error { font-size: 12px; color: var(--danger); min-height: 18px; margin-top: 6px; }
 /* Button variants */
 .btn.small { height: 32px; padding: 0 10px; border-radius: 10px; font-size: 12px; }
 .btn.ghost { background: transparent; border-color: var(--border); }
